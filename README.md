@@ -59,3 +59,26 @@ ros2 launch fleet_bringup demo.launch.py
 ## Current Status
 
 This scaffold provides the project structure and starter nodes. The business logic is still intentionally minimal so we can extend it cleanly in the next step.
+
+## Update Workflow
+
+Use these project notes for ongoing GitHub updates:
+
+- `STATUS.md`: current technical state, verified behavior, blockers, and next steps
+- `PROGRESS.md`: chronological progress log for meaningful changes
+
+Recommended routine after each meaningful operation:
+
+1. Update `STATUS.md` if the current state or next steps changed.
+2. Add a short entry to `PROGRESS.md`.
+3. Commit the related code and notes together.
+4. Push to GitHub.
+
+Example:
+
+```bash
+cd /home/bruce/project-a/ros2-fleet-coordinator
+git add -A
+git commit -m "Implement route assignment flow"
+git push
+```
