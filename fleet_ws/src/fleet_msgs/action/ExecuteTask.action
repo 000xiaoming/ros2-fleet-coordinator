@@ -1,0 +1,7 @@
+fleet_msgs/Task task
+---
+bool success
+string message
+---
+string current_waypoint
+float32 progress
