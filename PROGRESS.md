@@ -43,3 +43,24 @@ Suggested format:
   - Implement route generation in `path_planner`
   - Connect `fleet_manager` to planner output before assignment
   - Add simulated task execution and completion feedback in `robot_agent`
+
+## 2026-03-19
+
+### Route planning and assignment flow
+- Changed:
+  - Added repo-local bug tracking in `BUGS.md`
+  - Added `fleet_msgs/TaskAssignment` and `fleet_msgs/PlanRoute`
+  - Extended `RobotState` with `current_waypoint`
+  - Implemented a small graph-backed route planner service in `path_planner`
+  - Updated `fleet_manager` to request routes before publishing assignments
+  - Updated `robot_agent` to accept assignments and simulate waypoint progress
+  - Added launch parameters for each robot's starting waypoint
+- Verified:
+  - `colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup` succeeds
+  - `ros2 launch fleet_bringup demo.launch.py` starts all nodes with the new interfaces loaded
+  - `fleet_manager` logs that it tracks both robots and `robot_agent` logs waypoint-aware idle states
+  - Separate `ros2 service call` verification is still blocked by sandbox DDS socket restrictions
+- Next:
+  - Move the waypoint graph and coordinates into config files
+  - Add a repeatable task submission helper for host-side runtime testing
+  - Verify full task assignment and completion flow outside the sandbox

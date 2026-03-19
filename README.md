@@ -65,14 +65,16 @@ This scaffold provides the project structure and starter nodes. The business log
 Use these project notes for ongoing GitHub updates:
 
 - `STATUS.md`: current technical state, verified behavior, blockers, and next steps
+- `BUGS.md`: bug log with status, root cause, verification, and GitHub submission result
 - `PROGRESS.md`: chronological progress log for meaningful changes
 
 Recommended routine after each meaningful operation:
 
 1. Update `STATUS.md` if the current state or next steps changed.
-2. Add a short entry to `PROGRESS.md`.
-3. Commit the related code and notes together.
-4. Push to GitHub.
+2. Record any encountered bug in `BUGS.md`.
+3. Add a short entry to `PROGRESS.md`.
+4. If a bug was resolved, commit the related code and notes together.
+5. Attempt to push the resolved bugfix to GitHub immediately and record why that submission was made.
 
 Example:
 

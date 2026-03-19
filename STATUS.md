@@ -1,6 +1,6 @@
 # Project Status
 
-Date: 2026-03-18
+Date: 2026-03-19
 
 ## Goal
 
@@ -24,6 +24,7 @@ The project was initialized as an isolated ROS 2 workspace with these packages:
 Main files:
 
 - `README.md`
+- `BUGS.md`
 - `fleet_ws/src/fleet_msgs/msg/RobotState.msg`
 - `fleet_ws/src/fleet_msgs/msg/Task.msg`
 - `fleet_ws/src/fleet_msgs/srv/SubmitTask.srv`
@@ -42,7 +43,10 @@ Main files:
   - `robot_id`
   - `x`
   - `y`
-- Currently publishes an `idle` state once per second
+  - `start_waypoint`
+- Subscribes to `task_assignments`
+- Publishes `idle`, `executing`, and `completed` state transitions
+- Simulates waypoint-by-waypoint progress for an assigned route
 
 ### `fleet_manager`
 
@@ -50,13 +54,15 @@ Main files:
 - Stores latest state per robot
 - Provides `submit_task` service using `fleet_msgs/srv/SubmitTask`
 - Queues pending tasks
-- Assigns the next pending task to the first idle robot
-- Preserves assigned task state internally so repeated `idle` publications from agents do not immediately re-free the robot
+- Requests a route from `path_planner` before assignment
+- Publishes `fleet_msgs/msg/TaskAssignment` to the selected robot
+- Preserves assignment state until the agent reports execution or completion
 
 ### `path_planner`
 
-- Only a scaffold node with heartbeat logging
-- No actual route planning implemented yet
+- Provides a `plan_route` service using a small built-in waypoint graph
+- Returns BFS-planned routes from robot start waypoint to pickup and then dropoff
+- Still uses hardcoded graph data rather than external config
 
 ### `fleet_bringup`
 
@@ -95,6 +101,20 @@ Workaround used during verification:
 export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros
 ```
 
+### 3. Executable route-assignment flow
+
+Problem:
+The previous project state only queued and internally assigned tasks. No planner output was requested, no assignment was sent to agents, and agents had no way to simulate task execution.
+
+Fix:
+
+- Added `fleet_msgs/msg/TaskAssignment`
+- Added `fleet_msgs/srv/PlanRoute`
+- Extended `fleet_msgs/msg/RobotState` with `current_waypoint`
+- Implemented a graph-backed `plan_route` service in `path_planner`
+- Updated `fleet_manager` to request routes asynchronously and publish assignments
+- Updated `robot_agent` to accept assignments and publish execution/completion progress
+
 ## Verified Working State
 
 These packages build successfully:
@@ -113,7 +133,15 @@ source /opt/ros/humble/setup.bash
 colcon build --cmake-clean-cache --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
 ```
 
-Launch startup was also tested with:
+Current verification command used:
+
+```bash
+cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
+```
+
+Launch startup was also tested on 2026-03-19 with:
 
 ```bash
 cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
@@ -126,23 +154,26 @@ ros2 launch fleet_bringup demo.launch.py
 Result:
 
 - Processes start
-- Agent nodes print state publication logs
-- DDS transport reports socket permission errors in this sandbox environment
+- `fleet_manager` receives and tracks robot state updates
+- `path_planner` starts with the configured waypoint graph
+- Agent nodes publish waypoint-aware idle state logs
+- DDS transport still reports socket permission errors in this sandbox environment
+
+Task submission with `ros2 service call` could not be verified inside the sandbox because a separate CLI participant remained blocked waiting for service discovery under the same DDS socket restrictions.
 
 This means:
 
 - build and packaging are good
-- local sandbox prevents full ROS 2 transport verification
-- full runtime behavior should be tested in a normal shell on the host machine
+- in-process node startup and basic topic traffic are working
+- sandbox restrictions still prevent full CLI-driven service verification
+- full end-to-end assignment execution should be tested in a normal host shell
 
 ## Current Limitations
 
-- No real path planning yet
-- No route graph yet
-- No task execution in `robot_agent`
-- No task completion feedback
+- Planner graph is hardcoded in C++
+- No external map/config loading yet
 - No conflict detection or reservation logic
-- `fleet_manager` assignment is simple first-idle selection
+- `fleet_manager` assignment is still simple first-idle selection
 - Robot battery is static
 - No RViz visualization yet
 
@@ -150,13 +181,13 @@ This means:
 
 ### Next coding step
 
-Implement actual task execution flow:
+Externalize the map and make the route flow configurable:
 
-1. Add a planner interface that returns waypoint routes
-2. Let `fleet_manager` request a route before assignment
-3. Let `robot_agent` receive an assigned task and simulate waypoint progress
-4. Publish task completion back to `fleet_manager`
-5. Mark robot idle again after completion
+1. Move the planner graph and waypoint coordinates into config files
+2. Load the map from `fleet_bringup` or `path_planner` parameters
+3. Add a simple demo task submission script for repeatable runtime testing
+4. Verify full assignment and completion flow outside the sandbox
+5. Only then add conflict reservation and smarter scheduling
 
 ### After that
 
@@ -184,10 +215,9 @@ colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner
 
 Most likely next files to edit:
 
-- `fleet_ws/src/fleet_manager/src/fleet_manager_node.cpp`
-- `fleet_ws/src/robot_agent/src/robot_agent_node.cpp`
 - `fleet_ws/src/path_planner/src/path_planner_node.cpp`
-- possibly new interfaces in `fleet_ws/src/fleet_msgs/`
+- `fleet_ws/src/fleet_bringup/launch/demo.launch.py`
+- likely new config under `fleet_ws/src/fleet_bringup/`
 
 ## Suggested Design Direction
 
@@ -197,10 +227,10 @@ Do not jump to Gazebo or Nav2 yet.
 
 A strong incremental path is:
 
-1. task queue
-2. route generation
-3. agent progress simulation
-4. completion reporting
-5. conflict reservation
+1. configurable map loading
+2. repeatable end-to-end demo task submission
+3. conflict reservation
+4. priority-aware scheduling
+5. visualization
 
 That keeps the project manageable while still looking like real ROS 2 systems work.

@@ -13,7 +13,9 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotState.msg"
   "msg/Task.msg"
+  "msg/TaskAssignment.msg"
   "srv/SubmitTask.srv"
+  "srv/PlanRoute.srv"
   "action/ExecuteTask.action"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs
 )

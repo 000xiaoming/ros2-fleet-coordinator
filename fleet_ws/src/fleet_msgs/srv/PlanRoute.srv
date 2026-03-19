@@ -1,0 +1,7 @@
+string start_waypoint
+string pickup_waypoint
+string dropoff_waypoint
+---
+bool success
+string message
+string[] route_waypoints
