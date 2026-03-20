@@ -64,3 +64,38 @@ Suggested format:
   - Move the waypoint graph and coordinates into config files
   - Add a repeatable task submission helper for host-side runtime testing
   - Verify full task assignment and completion flow outside the sandbox
+
+## 2026-03-20
+
+### Documentation expansion for bugs and technical rationale
+- Changed:
+  - Added `TECHNICAL_APPROACH.md`
+  - Updated `README.md` to point to the full documentation set
+  - Updated `STATUS.md` to describe documentation coverage and summarize the implementation approach
+  - Updated `BUGS.md` to state that all meaningful bugs and environmental blockers must be recorded there
+- Verified:
+  - Reviewed all repository documentation files for consistent wording and cross-references
+- Next:
+  - Keep `TECHNICAL_APPROACH.md` updated as planner configuration, scheduling, and conflict-handling evolve
+
+### Externalized demo map configuration
+- Changed:
+  - Added `fleet_bringup/config/demo_map.yaml` for waypoint coordinates and graph edges
+  - Updated `path_planner` to load graph topology from ROS 2 parameters instead of a hardcoded map
+  - Updated `robot_agent` to load waypoint positions from ROS 2 parameters with a built-in fallback
+  - Updated `demo.launch.py` and `fleet_bringup` packaging to distribute and load the shared config
+- Verified:
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select robot_agent path_planner fleet_bringup`
+- Next:
+  - Add a repeatable task submission helper for host-side runtime testing
+  - Verify full task assignment and completion flow outside the sandbox
+
+### Repeatable task submission helper
+- Changed:
+  - Added `fleet_bringup/scripts/submit_demo_task.sh`
+  - Installed the script with `fleet_bringup` so it can be run via `ros2 run`
+  - Updated project docs to include the helper in quick-start and current status
+- Verified:
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
+- Next:
+  - Verify full task assignment and completion flow outside the sandbox using the helper

@@ -2,12 +2,20 @@
 
 Track every meaningful bug encountered during development here.
 
+This file is the source of truth for bug documentation in this repository, including:
+
+- code defects
+- integration failures
+- build/package issues
+- environment blockers that materially affect verification
+
 For each bug:
 
 - record the date
 - describe the observed behavior and root cause
 - mark whether it is `open` or `resolved`
 - note how it was verified
+- explain whether the problem is code-related or environmental
 - after resolution, attempt to submit the fix to GitHub and record the result
 
 Suggested format:

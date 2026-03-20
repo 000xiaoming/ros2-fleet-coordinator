@@ -34,6 +34,16 @@ ros2-fleet-coordinator/
 - `path_planner`: graph route planner node
 - `fleet_bringup`: launch files and future config
 
+## Documentation Map
+
+Use these project notes as the main documentation set:
+
+- `README.md`: project overview and entry point
+- `STATUS.md`: current verified technical state, limitations, and next steps
+- `BUGS.md`: all meaningful bugs and environmental blockers
+- `PROGRESS.md`: chronological progress log
+- `TECHNICAL_APPROACH.md`: architecture, technology choices, reasons, and comparisons with alternatives
+
 ## Proposed V1 Scope
 
 1. Submit a transport task with pickup and dropoff waypoint IDs.
@@ -56,25 +66,47 @@ source install/setup.bash
 ros2 launch fleet_bringup demo.launch.py
 ```
 
+Submit a demo task from another shell:
+
+```bash
+cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run fleet_bringup submit_demo_task.sh --task-id demo_001
+```
+
 ## Current Status
 
-This scaffold provides the project structure and starter nodes. The business logic is still intentionally minimal so we can extend it cleanly in the next step.
+The project is past the initial scaffold stage. The current V1 flow now includes:
+
+- robot state publication from `robot_agent`
+- task submission and dispatching in `fleet_manager`
+- graph-based route planning in `path_planner`
+- simulated waypoint-by-waypoint task execution
+- launch-time map configuration for graph topology and waypoint coordinates
+- a repeatable demo task submission helper for host-side testing
+
+The main remaining gaps are conflict handling, smarter scheduling, and full end-to-end runtime verification outside the sandbox.
+
+## Technical Rationale
+
+The adopted approach is documented in `TECHNICAL_APPROACH.md`, including:
+
+- why ROS 2, C++, `ament_cmake`, and `colcon` were chosen
+- why the system is split into manager, planner, agent, bringup, and interface packages
+- why the current planner uses a graph plus BFS
+- how those choices compare with alternatives such as Python-only nodes, embedded planning, topic-only request/reply flows, Dijkstra/A*, Nav2-first integration, and custom non-ROS communication
 
 ## Update Workflow
-
-Use these project notes for ongoing GitHub updates:
-
-- `STATUS.md`: current technical state, verified behavior, blockers, and next steps
-- `BUGS.md`: bug log with status, root cause, verification, and GitHub submission result
-- `PROGRESS.md`: chronological progress log for meaningful changes
 
 Recommended routine after each meaningful operation:
 
 1. Update `STATUS.md` if the current state or next steps changed.
 2. Record any encountered bug in `BUGS.md`.
-3. Add a short entry to `PROGRESS.md`.
-4. If a bug was resolved, commit the related code and notes together.
-5. Attempt to push the resolved bugfix to GitHub immediately and record why that submission was made.
+3. Update `TECHNICAL_APPROACH.md` if the architecture or technology rationale changed.
+4. Add a short entry to `PROGRESS.md`.
+5. If a bug was resolved, commit the related code and notes together.
+6. Attempt to push the resolved bugfix to GitHub immediately and record why that submission was made.
 
 Example:
 

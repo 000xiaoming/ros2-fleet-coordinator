@@ -14,14 +14,14 @@ using namespace std::chrono_literals;
 class PathPlannerNode : public rclcpp::Node {
 public:
   PathPlannerNode() : Node("path_planner") {
-    graph_ = {
-        {"dock_a", {"mid_1"}},
-        {"mid_1", {"dock_a", "pickup_zone", "mid_2"}},
-        {"pickup_zone", {"mid_1"}},
-        {"mid_2", {"mid_1", "dropoff_zone", "dock_c"}},
-        {"dropoff_zone", {"mid_2"}},
-        {"dock_c", {"mid_2"}},
-    };
+    declare_parameter<std::vector<std::string>>(
+        "graph_waypoints",
+        {"dock_a", "mid_1", "pickup_zone", "mid_2", "dropoff_zone", "dock_c"});
+    declare_parameter<std::vector<std::string>>(
+        "graph_edges",
+        {"dock_a:mid_1", "mid_1:pickup_zone", "mid_1:mid_2",
+         "mid_2:dropoff_zone", "mid_2:dock_c"});
+    load_graph_from_parameters();
 
     plan_route_srv_ = this->create_service<fleet_msgs::srv::PlanRoute>(
         "plan_route",
@@ -61,6 +61,37 @@ public:
   }
 
 private:
+  void load_graph_from_parameters() {
+    graph_.clear();
+
+    const auto waypoints =
+        this->get_parameter("graph_waypoints").as_string_array();
+    for (const auto & waypoint : waypoints) {
+      graph_[waypoint] = {};
+    }
+
+    const auto edges = this->get_parameter("graph_edges").as_string_array();
+    for (const auto & edge : edges) {
+      const auto separator = edge.find(':');
+      if (separator == std::string::npos || separator == 0 ||
+          separator + 1 >= edge.size()) {
+        RCLCPP_WARN(this->get_logger(),
+                    "ignoring malformed graph edge '%s'", edge.c_str());
+        continue;
+      }
+
+      const auto from = edge.substr(0, separator);
+      const auto to = edge.substr(separator + 1);
+      graph_[from].push_back(to);
+      graph_[to].push_back(from);
+    }
+
+    if (graph_.empty()) {
+      RCLCPP_WARN(this->get_logger(),
+                  "planner graph is empty after parameter loading");
+    }
+  }
+
   std::vector<std::string> shortest_path(const std::string & start,
                                          const std::string & goal) const {
     if (!graph_.count(start) || !graph_.count(goal)) {

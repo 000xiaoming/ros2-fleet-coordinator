@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    waypoint_positions:
+      - "dock_a:0.0:0.0"
+      - "mid_1:1.0:0.0"
+      - "pickup_zone:2.0:0.0"
+      - "mid_2:3.0:0.5"
+      - "dropoff_zone:4.0:1.0"
+      - "dock_c:3.0:1.5"
+
+path_planner:
+  ros__parameters:
+    graph_waypoints:
+      - "dock_a"
+      - "mid_1"
+      - "pickup_zone"
+      - "mid_2"
+      - "dropoff_zone"
+      - "dock_c"
+    graph_edges:
+      - "dock_a:mid_1"
+      - "mid_1:pickup_zone"
+      - "mid_1:mid_2"
+      - "mid_2:dropoff_zone"
+      - "mid_2:dock_c"

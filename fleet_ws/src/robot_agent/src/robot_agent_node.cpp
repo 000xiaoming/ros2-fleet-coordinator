@@ -1,4 +1,5 @@
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -18,6 +19,9 @@ public:
     declare_parameter<double>("x", 0.0);
     declare_parameter<double>("y", 0.0);
     declare_parameter<std::string>("start_waypoint", "dock_a");
+    declare_parameter<std::vector<std::string>>("waypoint_positions",
+                                                std::vector<std::string>{});
+    waypoint_positions_ = load_waypoint_positions();
     state_pub_ =
         this->create_publisher<fleet_msgs::msg::RobotState>("robot_states", 10);
     assignment_sub_ = this->create_subscription<fleet_msgs::msg::TaskAssignment>(
@@ -60,6 +64,45 @@ public:
   }
 
 private:
+  std::unordered_map<std::string, std::pair<double, double>>
+  load_waypoint_positions() {
+    std::unordered_map<std::string, std::pair<double, double>> positions = {
+        {"dock_a", {0.0, 0.0}},
+        {"mid_1", {1.0, 0.0}},
+        {"pickup_zone", {2.0, 0.0}},
+        {"mid_2", {3.0, 0.5}},
+        {"dropoff_zone", {4.0, 1.0}},
+        {"dock_c", {3.0, 1.5}},
+    };
+
+    const auto configured_positions =
+        this->get_parameter("waypoint_positions").as_string_array();
+    for (const auto & entry : configured_positions) {
+      const auto first = entry.find(':');
+      const auto second = entry.find(':', first == std::string::npos ? first : first + 1);
+      if (first == std::string::npos || second == std::string::npos ||
+          first == 0 || second <= first + 1 || second + 1 >= entry.size()) {
+        RCLCPP_WARN(this->get_logger(),
+                    "ignoring malformed waypoint position '%s'", entry.c_str());
+        continue;
+      }
+
+      const auto waypoint = entry.substr(0, first);
+
+      try {
+        const auto x = std::stod(entry.substr(first + 1, second - first - 1));
+        const auto y = std::stod(entry.substr(second + 1));
+        positions[waypoint] = {x, y};
+      } catch (const std::exception &) {
+        RCLCPP_WARN(this->get_logger(),
+                    "ignoring malformed numeric waypoint position '%s'",
+                    entry.c_str());
+      }
+    }
+
+    return positions;
+  }
+
   void publish_state() {
     fleet_msgs::msg::RobotState state;
     state.robot_id = this->get_parameter("robot_id").as_string();
@@ -104,18 +147,8 @@ private:
 
   std::pair<double, double>
   lookup_waypoint_position(const std::string & waypoint) const {
-    static const std::unordered_map<std::string, std::pair<double, double>>
-        waypoint_positions = {
-            {"dock_a", {0.0, 0.0}},
-            {"mid_1", {1.0, 0.0}},
-            {"pickup_zone", {2.0, 0.0}},
-            {"mid_2", {3.0, 0.5}},
-            {"dropoff_zone", {4.0, 1.0}},
-            {"dock_c", {3.0, 1.5}},
-        };
-
-    const auto it = waypoint_positions.find(waypoint);
-    if (it != waypoint_positions.end()) {
+    const auto it = waypoint_positions_.find(waypoint);
+    if (it != waypoint_positions_.end()) {
       return it->second;
     }
 
@@ -130,6 +163,7 @@ private:
   bool completion_announced_{false};
   std::string active_task_id_;
   std::string current_waypoint_;
+  std::unordered_map<std::string, std::pair<double, double>> waypoint_positions_;
   std::vector<std::string> route_waypoints_;
   std::size_t route_index_{0};
 };

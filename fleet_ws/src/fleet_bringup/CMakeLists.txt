@@ -7,4 +7,13 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/submit_demo_task.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

@@ -1,10 +1,20 @@
 # Project Status
 
-Date: 2026-03-19
+Date: 2026-03-20
 
 ## Goal
 
 Create a standalone ROS 2 C++ project for a multi-robot fleet coordinator inside `/home/bruce/project-a` without affecting other projects.
+
+## Documentation Coverage
+
+The project documentation is split by purpose:
+
+- `README.md`: overview and quick start
+- `STATUS.md`: current behavior, verification status, limitations, and next steps
+- `BUGS.md`: all meaningful bugs and environmental blockers
+- `PROGRESS.md`: chronological record of meaningful project changes
+- `TECHNICAL_APPROACH.md`: technical design, chosen technologies, rationale, and comparisons with alternatives
 
 ## Project Directory
 
@@ -25,6 +35,7 @@ Main files:
 
 - `README.md`
 - `BUGS.md`
+- `TECHNICAL_APPROACH.md`
 - `fleet_ws/src/fleet_msgs/msg/RobotState.msg`
 - `fleet_ws/src/fleet_msgs/msg/Task.msg`
 - `fleet_ws/src/fleet_msgs/srv/SubmitTask.srv`
@@ -33,6 +44,8 @@ Main files:
 - `fleet_ws/src/robot_agent/src/robot_agent_node.cpp`
 - `fleet_ws/src/path_planner/src/path_planner_node.cpp`
 - `fleet_ws/src/fleet_bringup/launch/demo.launch.py`
+- `fleet_ws/src/fleet_bringup/config/demo_map.yaml`
+- `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
 
 ## Current Behavior
 
@@ -44,9 +57,11 @@ Main files:
   - `x`
   - `y`
   - `start_waypoint`
+  - `waypoint_positions`
 - Subscribes to `task_assignments`
 - Publishes `idle`, `executing`, and `completed` state transitions
 - Simulates waypoint-by-waypoint progress for an assigned route
+- Resolves waypoint coordinates from parameters, with a built-in fallback map
 
 ### `fleet_manager`
 
@@ -60,9 +75,9 @@ Main files:
 
 ### `path_planner`
 
-- Provides a `plan_route` service using a small built-in waypoint graph
+- Provides a `plan_route` service using a parameter-driven waypoint graph
 - Returns BFS-planned routes from robot start waypoint to pickup and then dropoff
-- Still uses hardcoded graph data rather than external config
+- Loads demo graph topology from `fleet_bringup/config/demo_map.yaml`
 
 ### `fleet_bringup`
 
@@ -71,6 +86,9 @@ Main files:
   - `path_planner`
   - `robot_agent_1`
   - `robot_agent_2`
+- Ships:
+  - `config/demo_map.yaml` for the demo graph and waypoint coordinates
+  - `submit_demo_task.sh` for repeatable task submission
 
 ## Important Fixes Already Made
 
@@ -141,6 +159,18 @@ source /opt/ros/humble/setup.bash
 colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
 ```
 
+Additional 2026-03-20 verification:
+
+```bash
+cd /home/bruce/project-a/ros2-fleet-coordinator
+bash -n fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh
+
+cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select robot_agent path_planner fleet_bringup
+colcon build --packages-select fleet_bringup
+```
+
 Launch startup was also tested on 2026-03-19 with:
 
 ```bash
@@ -170,24 +200,35 @@ This means:
 
 ## Current Limitations
 
-- Planner graph is hardcoded in C++
-- No external map/config loading yet
+- Demo map data is still ROS parameter YAML rather than a richer map format
 - No conflict detection or reservation logic
 - `fleet_manager` assignment is still simple first-idle selection
 - Robot battery is static
 - No RViz visualization yet
+- Full CLI-driven runtime verification remains blocked in this sandbox by DDS socket restrictions
+
+## Technical Approach Summary
+
+The adopted implementation approach is intentionally conservative for V1:
+
+- ROS 2 is used as the robotics-native communication and packaging layer
+- C++ is used for the core nodes to stay close to common production robotics runtime patterns
+- `fleet_msgs` centralizes domain-specific interfaces
+- `fleet_manager`, `path_planner`, and `robot_agent` are separated by responsibility
+- Route planning is implemented as a service because `fleet_manager` requires a request/response planner dependency before dispatch
+- Robot state and assignment lifecycle are represented through topic traffic
+- BFS on a waypoint graph was chosen as the smallest correct planning strategy for the current unweighted demo map
+- Demo graph topology and waypoint coordinates are now loaded through launch-time parameters
+
+Detailed rationale and comparisons with alternatives are documented in `TECHNICAL_APPROACH.md`.
 
 ## Recommended Next Steps
 
 ### Next coding step
 
-Externalize the map and make the route flow configurable:
-
-1. Move the planner graph and waypoint coordinates into config files
-2. Load the map from `fleet_bringup` or `path_planner` parameters
-3. Add a simple demo task submission script for repeatable runtime testing
-4. Verify full assignment and completion flow outside the sandbox
-5. Only then add conflict reservation and smarter scheduling
+1. Verify full assignment and completion flow outside the sandbox with `submit_demo_task.sh`
+2. Add conflict reservation and smarter scheduling
+3. Add visualization or richer runtime introspection
 
 ### After that
 
@@ -215,9 +256,10 @@ colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner
 
 Most likely next files to edit:
 
+- `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
 - `fleet_ws/src/path_planner/src/path_planner_node.cpp`
 - `fleet_ws/src/fleet_bringup/launch/demo.launch.py`
-- likely new config under `fleet_ws/src/fleet_bringup/`
+- `fleet_ws/src/fleet_bringup/config/demo_map.yaml`
 
 ## Suggested Design Direction
 
