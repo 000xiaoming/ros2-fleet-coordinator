@@ -87,11 +87,13 @@ Suggested format:
   - The planner failure branch in `fleet_manager` returned without removing the rejected front-of-queue task.
 - Fix:
   - Updated `fleet_manager` to remove planner-rejected front-of-queue tasks.
+  - Added explicit `TaskStatus` reporting so rejected tasks publish a machine-readable `failed` event on `task_statuses`.
   - Added `fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh` to verify that a valid task still runs after an invalid task is rejected.
 - Verified:
   - `colcon build --event-handlers console_direct+ --packages-select fleet_manager`
   - `bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
   - `colcon build --packages-select fleet_bringup`
   - `ros2 run fleet_bringup check_planner_failure_path.sh`
+  - Verified that `task_statuses` reports the rejection reason and that a later valid task is still assigned and completed
 - GitHub submission:
   - Pending until the fix is committed and a push attempt is made.

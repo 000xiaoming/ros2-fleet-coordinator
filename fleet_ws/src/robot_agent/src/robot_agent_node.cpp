@@ -8,6 +8,7 @@
 
 #include "fleet_msgs/msg/robot_state.hpp"
 #include "fleet_msgs/msg/task_assignment.hpp"
+#include "fleet_msgs/msg/task_status.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 using namespace std::chrono_literals;
@@ -24,6 +25,8 @@ public:
     waypoint_positions_ = load_waypoint_positions();
     state_pub_ =
         this->create_publisher<fleet_msgs::msg::RobotState>("robot_states", 10);
+    task_status_pub_ =
+        this->create_publisher<fleet_msgs::msg::TaskStatus>("task_statuses", 10);
     assignment_sub_ = this->create_subscription<fleet_msgs::msg::TaskAssignment>(
         "task_assignments", 10,
         [this](const fleet_msgs::msg::TaskAssignment::SharedPtr msg) {
@@ -50,6 +53,9 @@ public:
           route_waypoints_ = msg->route_waypoints;
           route_index_ = 0;
           current_waypoint_ = route_waypoints_.front();
+
+          publish_task_status("executing",
+                              "task accepted by robot and execution started");
 
           RCLCPP_INFO(this->get_logger(),
                       "accepted task %s with %zu route waypoints",
@@ -103,6 +109,20 @@ private:
     return positions;
   }
 
+  void publish_task_status(const std::string & status,
+                           const std::string & message) {
+    if (active_task_id_.empty()) {
+      return;
+    }
+
+    fleet_msgs::msg::TaskStatus task_status;
+    task_status.task_id = active_task_id_;
+    task_status.robot_id = this->get_parameter("robot_id").as_string();
+    task_status.status = status;
+    task_status.message = message;
+    task_status_pub_->publish(task_status);
+  }
+
   void publish_state() {
     fleet_msgs::msg::RobotState state;
     state.robot_id = this->get_parameter("robot_id").as_string();
@@ -122,6 +142,7 @@ private:
       completion_announced_ = true;
       state.status = "completed";
       state.current_task_id = active_task_id_;
+      publish_task_status("completed", "task execution completed");
     } else {
       active_task_ = false;
       active_task_id_.clear();
@@ -157,6 +178,7 @@ private:
   }
 
   rclcpp::Publisher<fleet_msgs::msg::RobotState>::SharedPtr state_pub_;
+  rclcpp::Publisher<fleet_msgs::msg::TaskStatus>::SharedPtr task_status_pub_;
   rclcpp::Subscription<fleet_msgs::msg::TaskAssignment>::SharedPtr assignment_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
   bool active_task_{false};

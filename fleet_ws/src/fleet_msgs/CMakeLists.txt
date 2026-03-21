@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotState.msg"
   "msg/Task.msg"
   "msg/TaskAssignment.msg"
+  "msg/TaskStatus.msg"
   "srv/SubmitTask.srv"
   "srv/PlanRoute.srv"
   "action/ExecuteTask.action"

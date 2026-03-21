@@ -39,6 +39,7 @@ Main files:
 - `fleet_ws/src/fleet_msgs/msg/RobotState.msg`
 - `fleet_ws/src/fleet_msgs/msg/Task.msg`
 - `fleet_ws/src/fleet_msgs/msg/TaskAssignment.msg`
+- `fleet_ws/src/fleet_msgs/msg/TaskStatus.msg`
 - `fleet_ws/src/fleet_msgs/srv/SubmitTask.srv`
 - `fleet_ws/src/fleet_msgs/srv/PlanRoute.srv`
 - `fleet_ws/src/fleet_msgs/action/ExecuteTask.action`
@@ -74,6 +75,7 @@ Main files:
 - Queues pending tasks
 - Requests a route from `path_planner` before assignment
 - Publishes `fleet_msgs/msg/TaskAssignment` to the selected robot
+- Publishes `fleet_msgs/msg/TaskStatus` on `task_statuses` for queued, assigned, executing, completed, and failed task lifecycle events
 - Drops planner-rejected front-of-queue tasks so one invalid task does not stall the queue
 - Preserves assignment state until the agent reports execution or completion
 
@@ -94,7 +96,7 @@ Main files:
 - Ships:
   - `config/demo_map.yaml` for the demo graph and waypoint coordinates
   - `submit_demo_task.sh` for repeatable task submission
-  - `check_planner_failure_path.sh` for end-to-end planner-failure recovery verification
+  - `check_planner_failure_path.sh` for end-to-end planner-failure recovery verification, including lifecycle status checks on `/task_statuses`
 
 ## Important Fixes Already Made
 
@@ -205,6 +207,7 @@ Result:
 - `path_planner` returns a valid route on the configured graph
 - `robot_agent` executes the route waypoint by waypoint and reports completion
 - Planner rejection no longer stalls the queue
+- `task_statuses` now reports queued, assigned, executing, completed, and failed lifecycle events
 - The planner-failure recovery check passes end to end
 
 Task submission with `ros2 service call` could not be verified inside the sandbox because a separate CLI participant remained blocked waiting for service discovery under the same DDS socket restrictions.
@@ -222,7 +225,8 @@ This means:
 - Demo map data is still ROS parameter YAML rather than a richer map format
 - No conflict detection or reservation logic
 - `fleet_manager` assignment is still simple first-idle selection
-- Rejected tasks are dropped after planner failure rather than retried or surfaced through a richer failure channel
+- Rejected tasks are dropped after planner failure rather than retried
+- `task_statuses` is a live topic stream only; there is no persisted task history or query API
 - Robot battery is static
 - No RViz visualization yet
 - Sandbox-only ROS 2 CLI verification remains limited by DDS socket restrictions
@@ -247,7 +251,7 @@ Detailed rationale and comparisons with alternatives are documented in `TECHNICA
 ### Next coding step
 
 1. Add conflict reservation and smarter scheduling
-2. Add richer task failure reporting for planner-rejected tasks
+2. Add persisted task history or queryable status inspection if operators need lookups beyond the live topic
 3. Add visualization or richer runtime introspection
 
 ### After that

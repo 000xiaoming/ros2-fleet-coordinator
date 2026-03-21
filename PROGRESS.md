@@ -130,3 +130,30 @@ Suggested format:
 - Next:
   - Add richer task failure reporting for rejected tasks
   - Add conflict reservation and smarter scheduling
+
+### Explicit failure reporting for planner-rejected tasks
+- Changed:
+  - Added `fleet_msgs/msg/TaskStatus` as a shared task-level reporting interface
+  - Updated `fleet_manager` to publish `task_statuses` with `status=failed` and the planner rejection reason when a task cannot be planned
+  - Extended `check_planner_failure_path.sh` to assert the explicit failure report before submitting the valid follow-up task
+- Verified:
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select fleet_msgs fleet_manager fleet_bringup`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run fleet_bringup check_planner_failure_path.sh`
+- Next:
+  - Decide whether task failure reporting should also cover assignment, execution, and completion, not just planner rejection
+  - Add conflict reservation and smarter scheduling
+
+### Task lifecycle status reporting
+- Changed:
+  - Extended `TaskStatus` usage from planner failures only to a simple lifecycle stream
+  - Updated `fleet_manager` to publish `queued` and `assigned` task statuses
+  - Updated `robot_agent` to publish `executing` and `completed` task statuses
+  - Extended `check_planner_failure_path.sh` to assert lifecycle status events on `/task_statuses` for both failed and successful tasks
+- Verified:
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
+  - `source /opt/ros/humble/setup.bash && colcon build --event-handlers console_direct+ --packages-select fleet_msgs fleet_manager robot_agent fleet_bringup`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run fleet_bringup check_planner_failure_path.sh`
+- Next:
+  - Add conflict reservation and smarter scheduling
+  - Decide whether operators need persisted task history in addition to the live `task_statuses` topic

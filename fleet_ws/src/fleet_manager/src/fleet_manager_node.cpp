@@ -8,6 +8,7 @@
 #include "fleet_msgs/msg/robot_state.hpp"
 #include "fleet_msgs/msg/task.hpp"
 #include "fleet_msgs/msg/task_assignment.hpp"
+#include "fleet_msgs/msg/task_status.hpp"
 #include "fleet_msgs/srv/plan_route.hpp"
 #include "fleet_msgs/srv/submit_task.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -38,6 +39,8 @@ public:
 
     assignment_pub_ =
         this->create_publisher<fleet_msgs::msg::TaskAssignment>("task_assignments", 10);
+    task_status_pub_ =
+        this->create_publisher<fleet_msgs::msg::TaskStatus>("task_statuses", 10);
     plan_route_client_ =
         this->create_client<fleet_msgs::srv::PlanRoute>("plan_route");
 
@@ -46,6 +49,14 @@ public:
         [this](const std::shared_ptr<fleet_msgs::srv::SubmitTask::Request> request,
                std::shared_ptr<fleet_msgs::srv::SubmitTask::Response> response) {
           pending_tasks_.push_back(request->task);
+
+          fleet_msgs::msg::TaskStatus task_status;
+          task_status.task_id = request->task.task_id;
+          task_status.robot_id = "";
+          task_status.status = "queued";
+          task_status.message = "task queued by fleet_manager";
+          task_status_pub_->publish(task_status);
+
           response->accepted = true;
           response->message = "task queued";
           RCLCPP_INFO(this->get_logger(),
@@ -105,8 +116,16 @@ private:
           const auto response = future.get();
           if (!response->success || response->route_waypoints.empty()) {
             pending_tasks_.erase(pending_tasks_.begin());
+
+            fleet_msgs::msg::TaskStatus task_status;
+            task_status.task_id = task.task_id;
+            task_status.robot_id = robot_id;
+            task_status.status = "failed";
+            task_status.message = response->message;
+            task_status_pub_->publish(task_status);
+
             RCLCPP_WARN(this->get_logger(),
-                        "planner rejected task %s for %s; dropping task from queue: %s",
+                        "planner rejected task %s for %s; reported failure and dropped task from queue: %s",
                         task.task_id.c_str(), robot_id.c_str(),
                         response->message.c_str());
             return;
@@ -119,6 +138,13 @@ private:
           assignment.task = task;
           assignment.route_waypoints = response->route_waypoints;
           assignment_pub_->publish(assignment);
+
+          fleet_msgs::msg::TaskStatus task_status;
+          task_status.task_id = task.task_id;
+          task_status.robot_id = robot_id;
+          task_status.status = "assigned";
+          task_status.message = "task assigned to robot";
+          task_status_pub_->publish(task_status);
 
           auto & assigned_robot = robot_states_.at(robot_id);
           assigned_robot.status = "assigned";
@@ -146,6 +172,7 @@ private:
   bool planning_request_in_flight_{false};
   rclcpp::Subscription<fleet_msgs::msg::RobotState>::SharedPtr robot_state_sub_;
   rclcpp::Publisher<fleet_msgs::msg::TaskAssignment>::SharedPtr assignment_pub_;
+  rclcpp::Publisher<fleet_msgs::msg::TaskStatus>::SharedPtr task_status_pub_;
   rclcpp::Client<fleet_msgs::srv::PlanRoute>::SharedPtr plan_route_client_;
   rclcpp::Service<fleet_msgs::srv::SubmitTask>::SharedPtr submit_task_srv_;
   rclcpp::TimerBase::SharedPtr assign_timer_;
