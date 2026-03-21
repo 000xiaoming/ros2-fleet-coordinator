@@ -104,8 +104,9 @@ private:
 
           const auto response = future.get();
           if (!response->success || response->route_waypoints.empty()) {
+            pending_tasks_.erase(pending_tasks_.begin());
             RCLCPP_WARN(this->get_logger(),
-                        "planner rejected task %s for %s: %s",
+                        "planner rejected task %s for %s; dropping task from queue: %s",
                         task.task_id.c_str(), robot_id.c_str(),
                         response->message.c_str());
             return;

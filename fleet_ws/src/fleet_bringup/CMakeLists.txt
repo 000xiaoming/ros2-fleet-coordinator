@@ -13,6 +13,7 @@ install(DIRECTORY config
 
 install(PROGRAMS
   scripts/submit_demo_task.sh
+  scripts/check_planner_failure_path.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -61,3 +61,37 @@ Suggested format:
   - Reproduced while attempting `ros2 service call /submit_task ...`
 - GitHub submission:
   - Not submitted as a code fix because the issue is environmental and remains unresolved.
+
+## 2026-03-21 - Demo helper script was not executable
+- Status: resolved
+- Observed:
+  - The documented helper existed at `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`, but direct execution failed with `Permission denied`.
+  - The installed helper path was not usable until the source script permission bit was corrected and the package was rebuilt.
+- Root cause:
+  - The source script was missing the executable bit even though `fleet_bringup/CMakeLists.txt` installs it with `install(PROGRAMS ...)`.
+- Fix:
+  - Marked `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh` executable and rebuilt `fleet_bringup`.
+- Verified:
+  - `colcon build --packages-select fleet_bringup`
+  - `ros2 run fleet_bringup submit_demo_task.sh --task-id demo_001`
+  - Verified live demo flow: task queued, route planned, task assigned, robot executed waypoints, and completion published
+- GitHub submission:
+  - Pending until the fix is committed and a push attempt is made.
+
+## 2026-03-21 - Planner rejection stalled the manager queue
+- Status: resolved
+- Observed:
+  - If an invalid task reached the front of `pending_tasks_`, `fleet_manager` logged the planner rejection but kept that task at the front of the queue.
+  - A later valid task could be accepted by `submit_task` but never assigned because the invalid front task blocked progress.
+- Root cause:
+  - The planner failure branch in `fleet_manager` returned without removing the rejected front-of-queue task.
+- Fix:
+  - Updated `fleet_manager` to remove planner-rejected front-of-queue tasks.
+  - Added `fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh` to verify that a valid task still runs after an invalid task is rejected.
+- Verified:
+  - `colcon build --event-handlers console_direct+ --packages-select fleet_manager`
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
+  - `colcon build --packages-select fleet_bringup`
+  - `ros2 run fleet_bringup check_planner_failure_path.sh`
+- GitHub submission:
+  - Pending until the fix is committed and a push attempt is made.

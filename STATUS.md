@@ -1,6 +1,6 @@
 # Project Status
 
-Date: 2026-03-20
+Date: 2026-03-21
 
 ## Goal
 
@@ -38,7 +38,9 @@ Main files:
 - `TECHNICAL_APPROACH.md`
 - `fleet_ws/src/fleet_msgs/msg/RobotState.msg`
 - `fleet_ws/src/fleet_msgs/msg/Task.msg`
+- `fleet_ws/src/fleet_msgs/msg/TaskAssignment.msg`
 - `fleet_ws/src/fleet_msgs/srv/SubmitTask.srv`
+- `fleet_ws/src/fleet_msgs/srv/PlanRoute.srv`
 - `fleet_ws/src/fleet_msgs/action/ExecuteTask.action`
 - `fleet_ws/src/fleet_manager/src/fleet_manager_node.cpp`
 - `fleet_ws/src/robot_agent/src/robot_agent_node.cpp`
@@ -46,6 +48,7 @@ Main files:
 - `fleet_ws/src/fleet_bringup/launch/demo.launch.py`
 - `fleet_ws/src/fleet_bringup/config/demo_map.yaml`
 - `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
+- `fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
 
 ## Current Behavior
 
@@ -71,12 +74,14 @@ Main files:
 - Queues pending tasks
 - Requests a route from `path_planner` before assignment
 - Publishes `fleet_msgs/msg/TaskAssignment` to the selected robot
+- Drops planner-rejected front-of-queue tasks so one invalid task does not stall the queue
 - Preserves assignment state until the agent reports execution or completion
 
 ### `path_planner`
 
 - Provides a `plan_route` service using a parameter-driven waypoint graph
 - Returns BFS-planned routes from robot start waypoint to pickup and then dropoff
+- Rejects tasks whose start, pickup, or dropoff waypoints are not on the configured graph
 - Loads demo graph topology from `fleet_bringup/config/demo_map.yaml`
 
 ### `fleet_bringup`
@@ -89,6 +94,7 @@ Main files:
 - Ships:
   - `config/demo_map.yaml` for the demo graph and waypoint coordinates
   - `submit_demo_task.sh` for repeatable task submission
+  - `check_planner_failure_path.sh` for end-to-end planner-failure recovery verification
 
 ## Important Fixes Already Made
 
@@ -128,10 +134,20 @@ Fix:
 
 - Added `fleet_msgs/msg/TaskAssignment`
 - Added `fleet_msgs/srv/PlanRoute`
-- Extended `fleet_msgs/msg/RobotState` with `current_waypoint`
+- Extended `RobotState` with `current_waypoint`
 - Implemented a graph-backed `plan_route` service in `path_planner`
 - Updated `fleet_manager` to request routes asynchronously and publish assignments
 - Updated `robot_agent` to accept assignments and publish execution/completion progress
+
+### 4. Queue-stall fix for planner rejection
+
+Problem:
+If the planner rejected the front task in `pending_tasks_`, `fleet_manager` logged the failure but left that task at the front of the queue, blocking later valid tasks.
+
+Fix:
+
+- Updated `fleet_manager` to remove planner-rejected front-of-queue tasks
+- Added a runtime recovery check script that proves a valid task still runs after an invalid one is rejected
 
 ## Verified Working State
 
@@ -143,37 +159,23 @@ These packages build successfully:
 - `path_planner`
 - `fleet_bringup`
 
-Build command used:
-
-```bash
-cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
-source /opt/ros/humble/setup.bash
-colcon build --cmake-clean-cache --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
-```
-
-Current verification command used:
+Build commands used:
 
 ```bash
 cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
 source /opt/ros/humble/setup.bash
 colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
+colcon build --event-handlers console_direct+ --packages-select fleet_manager
+colcon build --packages-select fleet_bringup
 ```
 
-Additional 2026-03-20 verification:
+Additional 2026-03-21 verification:
 
 ```bash
 cd /home/bruce/project-a/ros2-fleet-coordinator
 bash -n fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh
+bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh
 
-cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
-source /opt/ros/humble/setup.bash
-colcon build --packages-select robot_agent path_planner fleet_bringup
-colcon build --packages-select fleet_bringup
-```
-
-Launch startup was also tested on 2026-03-19 with:
-
-```bash
 cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
 export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros
 source /opt/ros/humble/setup.bash
@@ -181,31 +183,49 @@ source install/setup.bash
 ros2 launch fleet_bringup demo.launch.py
 ```
 
+From another shell:
+
+```bash
+cd /home/bruce/project-a/ros2-fleet-coordinator
+source /opt/ros/humble/setup.bash
+source fleet_ws/install/setup.bash
+ros2 run fleet_bringup submit_demo_task.sh --task-id demo_001
+
+cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run fleet_bringup check_planner_failure_path.sh
+```
+
 Result:
 
-- Processes start
-- `fleet_manager` receives and tracks robot state updates
-- `path_planner` starts with the configured waypoint graph
-- Agent nodes publish waypoint-aware idle state logs
-- DDS transport still reports socket permission errors in this sandbox environment
+- `submit_demo_task.sh` is runnable through `ros2 run`
+- `submit_task` accepts a demo task
+- `fleet_manager` queues the task and assigns it to an idle robot
+- `path_planner` returns a valid route on the configured graph
+- `robot_agent` executes the route waypoint by waypoint and reports completion
+- Planner rejection no longer stalls the queue
+- The planner-failure recovery check passes end to end
 
 Task submission with `ros2 service call` could not be verified inside the sandbox because a separate CLI participant remained blocked waiting for service discovery under the same DDS socket restrictions.
 
 This means:
 
 - build and packaging are good
-- in-process node startup and basic topic traffic are working
-- sandbox restrictions still prevent full CLI-driven service verification
-- full end-to-end assignment execution should be tested in a normal host shell
+- launch startup is good
+- end-to-end demo task submission and completion are verified in a normal shell
+- planner rejection recovery is verified in a normal shell
+- sandbox restrictions still limit sandbox-only ROS 2 CLI verification
 
 ## Current Limitations
 
 - Demo map data is still ROS parameter YAML rather than a richer map format
 - No conflict detection or reservation logic
 - `fleet_manager` assignment is still simple first-idle selection
+- Rejected tasks are dropped after planner failure rather than retried or surfaced through a richer failure channel
 - Robot battery is static
 - No RViz visualization yet
-- Full CLI-driven runtime verification remains blocked in this sandbox by DDS socket restrictions
+- Sandbox-only ROS 2 CLI verification remains limited by DDS socket restrictions
 
 ## Technical Approach Summary
 
@@ -226,15 +246,15 @@ Detailed rationale and comparisons with alternatives are documented in `TECHNICA
 
 ### Next coding step
 
-1. Verify full assignment and completion flow outside the sandbox with `submit_demo_task.sh`
-2. Add conflict reservation and smarter scheduling
+1. Add conflict reservation and smarter scheduling
+2. Add richer task failure reporting for planner-rejected tasks
 3. Add visualization or richer runtime introspection
 
 ### After that
 
-- Add a simple graph map in config
-- Add conflict checking on nodes/edges
+- Add conflict checking on nodes and edges
 - Add priority-aware scheduling
+- Add automated tests around manager selection and failure handling
 - Add visualization
 
 ## Fast Resume Notes For Tomorrow
@@ -252,27 +272,11 @@ Useful checks:
 ```bash
 colcon list
 colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup
+ros2 run fleet_bringup check_planner_failure_path.sh
 ```
 
 Most likely next files to edit:
 
-- `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
+- `fleet_ws/src/fleet_manager/src/fleet_manager_node.cpp`
 - `fleet_ws/src/path_planner/src/path_planner_node.cpp`
-- `fleet_ws/src/fleet_bringup/launch/demo.launch.py`
-- `fleet_ws/src/fleet_bringup/config/demo_map.yaml`
-
-## Suggested Design Direction
-
-Keep V1 graph-based and simulated.
-
-Do not jump to Gazebo or Nav2 yet.
-
-A strong incremental path is:
-
-1. configurable map loading
-2. repeatable end-to-end demo task submission
-3. conflict reservation
-4. priority-aware scheduling
-5. visualization
-
-That keeps the project manageable while still looking like real ROS 2 systems work.
+- `fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`

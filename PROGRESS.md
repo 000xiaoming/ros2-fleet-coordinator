@@ -99,3 +99,34 @@ Suggested format:
   - `bash -n fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
 - Next:
   - Verify full task assignment and completion flow outside the sandbox using the helper
+
+## 2026-03-21
+
+### End-to-end demo flow verified
+- Changed:
+  - Fixed executable permissions on `fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
+  - Rebuilt `fleet_bringup` so the helper is installed as a runnable program
+  - Verified the documented `ros2 run fleet_bringup submit_demo_task.sh` workflow against the live demo stack
+- Verified:
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select fleet_msgs fleet_manager robot_agent path_planner fleet_bringup`
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/submit_demo_task.sh`
+  - `timeout 12s ros2 launch fleet_bringup demo.launch.py`
+  - `ros2 run fleet_bringup submit_demo_task.sh --task-id demo_001`
+  - Observed `fleet_manager` queue the task, `path_planner` return a route, `robot_agent_1` execute the route, and completion return the robot to idle
+- Next:
+  - Add tests for planner failure paths and manager queue behavior
+  - Implement conflict handling and smarter scheduling beyond first-idle dispatch
+
+### Queue-stall fix and recovery check
+- Changed:
+  - Updated `fleet_manager` to drop planner-rejected front-of-queue tasks instead of leaving them to block later tasks
+  - Added `fleet_bringup/scripts/check_planner_failure_path.sh` as a runtime regression check
+  - Installed the new check script with `fleet_bringup` so it can be run through `ros2 run`
+- Verified:
+  - `source /opt/ros/humble/setup.bash && colcon build --event-handlers console_direct+ --packages-select fleet_manager`
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/check_planner_failure_path.sh`
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select fleet_bringup`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run fleet_bringup check_planner_failure_path.sh`
+- Next:
+  - Add richer task failure reporting for rejected tasks
+  - Add conflict reservation and smarter scheduling
