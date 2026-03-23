@@ -157,3 +157,35 @@ Suggested format:
 - Next:
   - Add conflict reservation and smarter scheduling
   - Decide whether operators need persisted task history in addition to the live `task_statuses` topic
+
+## 2026-03-23
+
+### Fleet manager async callback hardening
+- Changed:
+  - Updated `fleet_manager` to look up the queued task by `task_id` before queue rotation or erasure in the async planner callback
+  - Guarded assignment so planner success only proceeds if the selected robot is still tracked and still idle when the callback fires
+  - Left tasks queued instead of dereferencing stale robot state when planner results arrive after robot cleanup
+- Verified:
+  - `colcon build --packages-select fleet_manager`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros && ros2 run fleet_bringup check_planner_failure_path.sh`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros && ros2 run fleet_bringup check_conflict_reservation.sh`
+- Next:
+  - Add automated coverage for timeout and async planning interleavings around `fleet_manager`
+  - Improve scheduling beyond first-idle dispatch now that the async edge cases are handled
+
+## 2026-03-22
+
+### Waypoint reservation flow completed
+- Changed:
+  - Extended `fleet_msgs/srv/PlanRoute` with `reserved_waypoints`
+  - Updated `path_planner` to avoid reserved intermediate waypoints and return a blocked-by-reservations response when needed
+  - Updated `fleet_manager` to reserve assigned route waypoints, publish `waiting` task statuses for deferred work, and install `check_conflict_reservation.sh`
+  - Fixed `robot_agent` so it clears local busy state immediately after publishing a terminal `completed` update, allowing immediate reassignment
+- Verified:
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select fleet_msgs path_planner fleet_manager fleet_bringup`
+  - `bash -n fleet_ws/src/fleet_bringup/scripts/check_conflict_reservation.sh`
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select robot_agent fleet_bringup`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros && ros2 run fleet_bringup check_conflict_reservation.sh`
+- Next:
+  - Improve scheduling beyond first-idle dispatch now that waypoint reservations exist
+  - Add automated tests around reservation, timeout, and queue behavior

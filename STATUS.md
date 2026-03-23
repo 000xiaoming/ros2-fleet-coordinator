@@ -1,6 +1,6 @@
 # Project Status
 
-Date: 2026-03-21
+Date: 2026-03-23
 
 ## Goal
 
@@ -75,14 +75,17 @@ Main files:
 - Queues pending tasks
 - Requests a route from `path_planner` before assignment
 - Publishes `fleet_msgs/msg/TaskAssignment` to the selected robot
-- Publishes `fleet_msgs/msg/TaskStatus` on `task_statuses` for queued, assigned, executing, completed, and failed task lifecycle events
+- Publishes `fleet_msgs/msg/TaskStatus` on `task_statuses` for queued, waiting, assigned, executing, completed, and failed task lifecycle events
 - Drops planner-rejected front-of-queue tasks so one invalid task does not stall the queue
+- Reserves assigned route waypoints and postpones conflicting tasks until those reservations clear
+- Releases reservations on task completion or robot-state timeout
 - Preserves assignment state until the agent reports execution or completion
 
 ### `path_planner`
 
 - Provides a `plan_route` service using a parameter-driven waypoint graph
 - Returns BFS-planned routes from robot start waypoint to pickup and then dropoff
+- Avoids currently reserved intermediate waypoints and reports when a route is blocked by active reservations
 - Rejects tasks whose start, pickup, or dropoff waypoints are not on the configured graph
 - Loads demo graph topology from `fleet_bringup/config/demo_map.yaml`
 
@@ -97,6 +100,7 @@ Main files:
   - `config/demo_map.yaml` for the demo graph and waypoint coordinates
   - `submit_demo_task.sh` for repeatable task submission
   - `check_planner_failure_path.sh` for end-to-end planner-failure recovery verification, including lifecycle status checks on `/task_statuses`
+  - `check_conflict_reservation.sh` for end-to-end reservation-conflict verification
 
 ## Important Fixes Already Made
 
@@ -151,6 +155,17 @@ Fix:
 - Updated `fleet_manager` to remove planner-rejected front-of-queue tasks
 - Added a runtime recovery check script that proves a valid task still runs after an invalid one is rejected
 
+### 5. Async planner callback stale-state fix
+
+Problem:
+`fleet_manager` could receive a planner response after the selected robot had timed out and been removed from manager state. The callback also mutated the queue by assuming the planned task was still at `pending_tasks_.front()`.
+
+Fix:
+
+- Updated `fleet_manager` to find the queued task by `task_id` before rotating or erasing it
+- Guarded assignment so planner success only proceeds if the selected robot is still tracked and still idle
+- Left the task queued when planner success arrives for a robot that is no longer eligible for assignment
+
 ## Verified Working State
 
 These packages build successfully:
@@ -171,7 +186,7 @@ colcon build --event-handlers console_direct+ --packages-select fleet_manager
 colcon build --packages-select fleet_bringup
 ```
 
-Additional 2026-03-21 verification:
+Additional 2026-03-21 and 2026-03-23 verification:
 
 ```bash
 cd /home/bruce/project-a/ros2-fleet-coordinator
@@ -197,6 +212,7 @@ cd /home/bruce/project-a/ros2-fleet-coordinator/fleet_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 run fleet_bringup check_planner_failure_path.sh
+ros2 run fleet_bringup check_conflict_reservation.sh
 ```
 
 Result:
@@ -207,8 +223,11 @@ Result:
 - `path_planner` returns a valid route on the configured graph
 - `robot_agent` executes the route waypoint by waypoint and reports completion
 - Planner rejection no longer stalls the queue
-- `task_statuses` now reports queued, assigned, executing, completed, and failed lifecycle events
+- `task_statuses` now reports queued, waiting, assigned, executing, completed, and failed lifecycle events
 - The planner-failure recovery check passes end to end
+- Conflicting tasks are postponed while route waypoints are reserved and resume after reservations clear
+- The reservation-conflict recovery check passes end to end
+- The `fleet_manager` async planner callback no longer depends on stale queue-front or stale robot-state assumptions during assignment
 
 Task submission with `ros2 service call` could not be verified inside the sandbox because a separate CLI participant remained blocked waiting for service discovery under the same DDS socket restrictions.
 
@@ -218,12 +237,13 @@ This means:
 - launch startup is good
 - end-to-end demo task submission and completion are verified in a normal shell
 - planner rejection recovery is verified in a normal shell
+- reservation conflict handling is verified in a normal shell
 - sandbox restrictions still limit sandbox-only ROS 2 CLI verification
 
 ## Current Limitations
 
 - Demo map data is still ROS parameter YAML rather than a richer map format
-- No conflict detection or reservation logic
+- Conflict handling is waypoint-level only; there is no edge reservation or time-window model
 - `fleet_manager` assignment is still simple first-idle selection
 - Rejected tasks are dropped after planner failure rather than retried
 - `task_statuses` is a live topic stream only; there is no persisted task history or query API
@@ -250,15 +270,14 @@ Detailed rationale and comparisons with alternatives are documented in `TECHNICA
 
 ### Next coding step
 
-1. Add conflict reservation and smarter scheduling
+1. Improve scheduling beyond first-idle dispatch now that waypoint reservations exist
 2. Add persisted task history or queryable status inspection if operators need lookups beyond the live topic
-3. Add visualization or richer runtime introspection
+3. Add automated tests around reservation, timeout, and queue behavior
 
 ### After that
 
-- Add conflict checking on nodes and edges
+- Add edge-level and time-aware conflict checking
 - Add priority-aware scheduling
-- Add automated tests around manager selection and failure handling
 - Add visualization
 
 ## Fast Resume Notes For Tomorrow

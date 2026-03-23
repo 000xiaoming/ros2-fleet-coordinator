@@ -30,6 +30,26 @@ Suggested format:
 - GitHub submission:
 ```
 
+## 2026-03-23 - Async planner callback used stale robot and queue state
+- Status: resolved
+- Observed:
+  - `fleet_manager` could finish an async `plan_route` request after the selected robot had already timed out and been removed from `robot_states_`.
+  - The callback also rotated or erased `pending_tasks_.begin()` instead of locating the originally planned task by `task_id`, which made queue handling depend on the front entry staying unchanged while planning was in flight.
+- Root cause:
+  - The planner response handler assumed both robot liveness and queue front identity were still valid when the async future completed.
+- Fix:
+  - Updated `fleet_ws/src/fleet_manager/src/fleet_manager_node.cpp` to find the queued task by `task_id` before rotating or erasing it.
+  - Guarded assignment so planner success only proceeds if the selected robot is still tracked and still idle.
+  - Left the task queued when the planned-for robot disappeared or changed state before the planner reply arrived.
+- Verified:
+  - `colcon build --packages-select fleet_manager`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros && ros2 run fleet_bringup check_planner_failure_path.sh`
+  - `source /opt/ros/humble/setup.bash && source install/setup.bash && export ROS_LOG_DIR=/home/bruce/project-a/ros2-fleet-coordinator/fleet_ws/log/ros && ros2 run fleet_bringup check_conflict_reservation.sh`
+  - Verified that both end-to-end regression scripts still pass after the `fleet_manager` change
+- GitHub submission:
+  - Pending until the fix is committed and a push attempt is made.
+
+
 ## 2026-03-19 - Task assignment stopped at manager bookkeeping
 - Status: resolved
 - Observed:
@@ -95,5 +115,22 @@ Suggested format:
   - `colcon build --packages-select fleet_bringup`
   - `ros2 run fleet_bringup check_planner_failure_path.sh`
   - Verified that `task_statuses` reports the rejection reason and that a later valid task is still assigned and completed
+- GitHub submission:
+  - Pending until the fix is committed and a push attempt is made.
+
+## 2026-03-22 - Reservation recovery reassignment race
+- Status: resolved
+- Observed:
+  - `check_conflict_reservation.sh` initially showed the second task remain stuck after the first task completed.
+  - `fleet_manager` reassigned the just-finished robot immediately after the completion update, but `robot_agent` still rejected the new assignment as busy.
+- Root cause:
+  - `robot_agent` published a `completed` state one timer tick before clearing its internal `active_task_` flag. That left a one-cycle race where `fleet_manager` correctly saw the robot as available while the agent still considered itself busy.
+- Fix:
+  - Updated `fleet_ws/src/robot_agent/src/robot_agent_node.cpp` to clear the active task immediately after publishing the terminal `completed` state.
+  - Kept the `completed` state publication intact so `fleet_manager` can still release reservations and publish lifecycle updates.
+- Verified:
+  - `colcon build --packages-select robot_agent fleet_bringup`
+  - `ros2 run fleet_bringup check_conflict_reservation.sh`
+  - Verified that the second conflicting task reaches `waiting`, then `assigned`, `executing`, and `completed` after the first task clears its reservation.
 - GitHub submission:
   - Pending until the fix is committed and a push attempt is made.

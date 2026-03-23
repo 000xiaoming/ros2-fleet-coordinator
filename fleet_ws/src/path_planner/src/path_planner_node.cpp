@@ -4,6 +4,7 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "fleet_msgs/srv/plan_route.hpp"
@@ -27,14 +28,28 @@ public:
         "plan_route",
         [this](const std::shared_ptr<fleet_msgs::srv::PlanRoute::Request> request,
                std::shared_ptr<fleet_msgs::srv::PlanRoute::Response> response) {
+          const std::unordered_set<std::string> reserved_waypoints(
+              request->reserved_waypoints.begin(), request->reserved_waypoints.end());
+
           const auto to_pickup =
-              shortest_path(request->start_waypoint, request->pickup_waypoint);
+              shortest_path(request->start_waypoint, request->pickup_waypoint,
+                            reserved_waypoints);
           const auto to_dropoff =
-              shortest_path(request->pickup_waypoint, request->dropoff_waypoint);
+              shortest_path(request->pickup_waypoint, request->dropoff_waypoint,
+                            reserved_waypoints);
+
+          const bool blocked_to_pickup =
+              to_pickup.empty() &&
+              !shortest_path(request->start_waypoint, request->pickup_waypoint, {}).empty();
+          const bool blocked_to_dropoff =
+              to_dropoff.empty() &&
+              !shortest_path(request->pickup_waypoint, request->dropoff_waypoint, {}).empty();
 
           if (to_pickup.empty() || to_dropoff.empty()) {
             response->success = false;
-            response->message = "unable to plan route on configured graph";
+            response->message = (blocked_to_pickup || blocked_to_dropoff)
+                                    ? "route blocked by reserved waypoints"
+                                    : "unable to plan route on configured graph";
             return;
           }
 
@@ -46,11 +61,12 @@ public:
                                            to_dropoff.end());
 
           RCLCPP_INFO(this->get_logger(),
-                      "planned route %s -> %s -> %s (%zu waypoints)",
+                      "planned route %s -> %s -> %s (%zu waypoints, %zu reserved)",
                       request->start_waypoint.c_str(),
                       request->pickup_waypoint.c_str(),
                       request->dropoff_waypoint.c_str(),
-                      response->route_waypoints.size());
+                      response->route_waypoints.size(),
+                      request->reserved_waypoints.size());
         });
 
     timer_ = this->create_wall_timer(5s, [this]() {
@@ -92,9 +108,14 @@ private:
     }
   }
 
-  std::vector<std::string> shortest_path(const std::string & start,
-                                         const std::string & goal) const {
+  std::vector<std::string> shortest_path(
+      const std::string & start, const std::string & goal,
+      const std::unordered_set<std::string> & reserved_waypoints) const {
     if (!graph_.count(start) || !graph_.count(goal)) {
+      return {};
+    }
+
+    if (goal != start && reserved_waypoints.count(goal)) {
       return {};
     }
 
@@ -113,6 +134,9 @@ private:
 
       for (const auto & neighbor : graph_.at(current)) {
         if (parent.count(neighbor)) {
+          continue;
+        }
+        if (neighbor != goal && reserved_waypoints.count(neighbor)) {
           continue;
         }
         parent[neighbor] = current;

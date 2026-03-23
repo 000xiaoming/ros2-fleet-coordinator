@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -18,6 +20,11 @@ using namespace std::chrono_literals;
 class FleetManagerNode : public rclcpp::Node {
 public:
   FleetManagerNode() : Node("fleet_manager") {
+    reservation_timeout_ =
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(
+                this->declare_parameter("reservation_timeout_sec", 5.0)));
+
     robot_state_sub_ = this->create_subscription<fleet_msgs::msg::RobotState>(
         "robot_states", 10,
         [this](const fleet_msgs::msg::RobotState::SharedPtr msg) {
@@ -31,10 +38,12 @@ public:
           } else if (existing != robot_states_.end() &&
                      msg->status == "completed" &&
                      msg->current_task_id == existing->second.current_task_id) {
+            release_task_reservation(msg->current_task_id);
             next_state.status = "idle";
             next_state.current_task_id = "";
           }
           robot_states_[msg->robot_id] = next_state;
+          robot_last_update_[msg->robot_id] = std::chrono::steady_clock::now();
         });
 
     assignment_pub_ =
@@ -49,13 +58,8 @@ public:
         [this](const std::shared_ptr<fleet_msgs::srv::SubmitTask::Request> request,
                std::shared_ptr<fleet_msgs::srv::SubmitTask::Response> response) {
           pending_tasks_.push_back(request->task);
-
-          fleet_msgs::msg::TaskStatus task_status;
-          task_status.task_id = request->task.task_id;
-          task_status.robot_id = "";
-          task_status.status = "queued";
-          task_status.message = "task queued by fleet_manager";
-          task_status_pub_->publish(task_status);
+          publish_task_status(request->task.task_id, "", "queued",
+                              "task queued by fleet_manager");
 
           response->accepted = true;
           response->message = "task queued";
@@ -69,13 +73,100 @@ public:
 
     assign_timer_ = this->create_wall_timer(1s, [this]() { assign_pending_tasks(); });
     summary_timer_ = this->create_wall_timer(5s, [this]() {
-      RCLCPP_INFO(this->get_logger(), "tracking %zu robots, %zu pending tasks",
-                  robot_states_.size(), pending_tasks_.size());
+      cleanup_stale_robot_assignments();
+      RCLCPP_INFO(this->get_logger(),
+                  "tracking %zu robots, %zu pending tasks, %zu reserved tasks",
+                  robot_states_.size(), pending_tasks_.size(),
+                  task_reservations_.size());
     });
   }
 
 private:
+  void publish_task_status(const std::string & task_id,
+                           const std::string & robot_id,
+                           const std::string & status,
+                           const std::string & message) {
+    const auto signature = robot_id + "|" + status + "|" + message;
+    const auto existing = last_task_status_.find(task_id);
+    if (existing != last_task_status_.end() && existing->second == signature) {
+      return;
+    }
+
+    last_task_status_[task_id] = signature;
+
+    fleet_msgs::msg::TaskStatus task_status;
+    task_status.task_id = task_id;
+    task_status.robot_id = robot_id;
+    task_status.status = status;
+    task_status.message = message;
+    task_status_pub_->publish(task_status);
+  }
+
+  void release_task_reservation(const std::string & task_id) {
+    task_reservations_.erase(task_id);
+  }
+
+  void cleanup_stale_robot_assignments() {
+    const auto now = std::chrono::steady_clock::now();
+    std::vector<std::string> stale_robot_ids;
+
+    for (const auto & [robot_id, state] : robot_states_) {
+      const auto update_it = robot_last_update_.find(robot_id);
+      if (update_it == robot_last_update_.end()) {
+        continue;
+      }
+
+      if (now - update_it->second <= reservation_timeout_) {
+        continue;
+      }
+
+      stale_robot_ids.push_back(robot_id);
+
+      if (!state.current_task_id.empty()) {
+        release_task_reservation(state.current_task_id);
+        publish_task_status(state.current_task_id, robot_id, "failed",
+                            "task failed because robot state updates timed out");
+
+        RCLCPP_WARN(this->get_logger(),
+                    "released reservation for task %s after robot %s timed out",
+                    state.current_task_id.c_str(), robot_id.c_str());
+      }
+    }
+
+    for (const auto & robot_id : stale_robot_ids) {
+      robot_states_.erase(robot_id);
+      robot_last_update_.erase(robot_id);
+    }
+  }
+
+  std::vector<std::string> reserved_waypoints() const {
+    std::vector<std::string> reserved;
+    std::unordered_set<std::string> seen;
+
+    for (const auto & [task_id, waypoints] : task_reservations_) {
+      (void)task_id;
+      for (const auto & waypoint : waypoints) {
+        if (seen.insert(waypoint).second) {
+          reserved.push_back(waypoint);
+        }
+      }
+    }
+
+    return reserved;
+  }
+
+  std::vector<fleet_msgs::msg::Task>::iterator
+  find_pending_task(const std::string & task_id) {
+    return std::find_if(
+        pending_tasks_.begin(), pending_tasks_.end(),
+        [&task_id](const fleet_msgs::msg::Task & candidate) {
+          return candidate.task_id == task_id;
+        });
+  }
+
   void assign_pending_tasks() {
+    cleanup_stale_robot_assignments();
+
     if (pending_tasks_.empty() || planning_request_in_flight_) {
       return;
     }
@@ -104,6 +195,7 @@ private:
     request->start_waypoint = robot.current_waypoint;
     request->pickup_waypoint = task.pickup_waypoint;
     request->dropoff_waypoint = task.dropoff_waypoint;
+    request->reserved_waypoints = reserved_waypoints();
 
     planning_request_in_flight_ = true;
 
@@ -114,15 +206,32 @@ private:
           planning_request_in_flight_ = false;
 
           const auto response = future.get();
-          if (!response->success || response->route_waypoints.empty()) {
-            pending_tasks_.erase(pending_tasks_.begin());
+          auto pending_task = find_pending_task(task.task_id);
+          if (pending_task == pending_tasks_.end()) {
+            RCLCPP_WARN(this->get_logger(),
+                        "planner result arrived for task %s after it left the queue",
+                        task.task_id.c_str());
+            return;
+          }
 
-            fleet_msgs::msg::TaskStatus task_status;
-            task_status.task_id = task.task_id;
-            task_status.robot_id = robot_id;
-            task_status.status = "failed";
-            task_status.message = response->message;
-            task_status_pub_->publish(task_status);
+          if (!response->success || response->route_waypoints.empty()) {
+            if (response->message == "route blocked by reserved waypoints") {
+              if (std::next(pending_task) != pending_tasks_.end()) {
+                std::rotate(pending_task, std::next(pending_task),
+                            pending_tasks_.end());
+              }
+              publish_task_status(task.task_id, "", "waiting",
+                                  "task is waiting for reserved waypoints to clear");
+
+              RCLCPP_INFO(this->get_logger(),
+                          "planner postponed task %s for %s because route is blocked by reservations",
+                          task.task_id.c_str(), robot_id.c_str());
+              return;
+            }
+
+            pending_tasks_.erase(pending_task);
+            publish_task_status(task.task_id, robot_id, "failed",
+                                response->message);
 
             RCLCPP_WARN(this->get_logger(),
                         "planner rejected task %s for %s; reported failure and dropped task from queue: %s",
@@ -131,7 +240,23 @@ private:
             return;
           }
 
-          pending_tasks_.erase(pending_tasks_.begin());
+          const auto robot_it = robot_states_.find(robot_id);
+          if (robot_it == robot_states_.end()) {
+            RCLCPP_WARN(this->get_logger(),
+                        "planner succeeded for task %s but robot %s is no longer tracked; leaving task queued",
+                        task.task_id.c_str(), robot_id.c_str());
+            return;
+          }
+
+          if (robot_it->second.status != "idle" ||
+              !robot_it->second.current_task_id.empty()) {
+            RCLCPP_WARN(this->get_logger(),
+                        "planner succeeded for task %s but robot %s is no longer idle; leaving task queued",
+                        task.task_id.c_str(), robot_id.c_str());
+            return;
+          }
+
+          pending_tasks_.erase(pending_task);
 
           fleet_msgs::msg::TaskAssignment assignment;
           assignment.robot_id = robot_id;
@@ -139,17 +264,15 @@ private:
           assignment.route_waypoints = response->route_waypoints;
           assignment_pub_->publish(assignment);
 
-          fleet_msgs::msg::TaskStatus task_status;
-          task_status.task_id = task.task_id;
-          task_status.robot_id = robot_id;
-          task_status.status = "assigned";
-          task_status.message = "task assigned to robot";
-          task_status_pub_->publish(task_status);
+          task_reservations_[task.task_id] = response->route_waypoints;
+          publish_task_status(task.task_id, robot_id, "assigned",
+                              "task assigned to robot");
 
-          auto & assigned_robot = robot_states_.at(robot_id);
+          auto & assigned_robot = robot_it->second;
           assigned_robot.status = "assigned";
           assigned_robot.current_task_id = task.task_id;
           assigned_robot.current_waypoint = response->route_waypoints.front();
+          robot_last_update_[robot_id] = std::chrono::steady_clock::now();
 
           RCLCPP_INFO(this->get_logger(),
                       "assigned task %s to %s with %zu route waypoints",
@@ -168,7 +291,11 @@ private:
   }
 
   std::unordered_map<std::string, fleet_msgs::msg::RobotState> robot_states_;
+  std::unordered_map<std::string, std::chrono::steady_clock::time_point> robot_last_update_;
   std::vector<fleet_msgs::msg::Task> pending_tasks_;
+  std::unordered_map<std::string, std::vector<std::string>> task_reservations_;
+  std::unordered_map<std::string, std::string> last_task_status_;
+  std::chrono::steady_clock::duration reservation_timeout_{std::chrono::seconds(5)};
   bool planning_request_in_flight_{false};
   rclcpp::Subscription<fleet_msgs::msg::RobotState>::SharedPtr robot_state_sub_;
   rclcpp::Publisher<fleet_msgs::msg::TaskAssignment>::SharedPtr assignment_pub_;

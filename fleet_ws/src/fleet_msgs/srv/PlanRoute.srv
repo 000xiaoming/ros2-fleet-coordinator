@@ -1,6 +1,7 @@
 string start_waypoint
 string pickup_waypoint
 string dropoff_waypoint
+string[] reserved_waypoints
 ---
 bool success
 string message

@@ -128,6 +128,7 @@ private:
     state.robot_id = this->get_parameter("robot_id").as_string();
     state.battery_percent = 100.0F;
     state.current_waypoint = current_waypoint_;
+    bool clear_completed_task = false;
 
     if (!active_task_) {
       state.status = "idle";
@@ -143,6 +144,7 @@ private:
       state.status = "completed";
       state.current_task_id = active_task_id_;
       publish_task_status("completed", "task execution completed");
+      clear_completed_task = true;
     } else {
       active_task_ = false;
       active_task_id_.clear();
@@ -158,6 +160,14 @@ private:
     state.pose.orientation.w = 1.0;
 
     state_pub_->publish(state);
+
+    if (clear_completed_task) {
+      active_task_ = false;
+      completion_announced_ = false;
+      active_task_id_.clear();
+      route_waypoints_.clear();
+      route_index_ = 0;
+    }
 
     RCLCPP_INFO(this->get_logger(),
                 "published %s state for %s at %s (%.1f, %.1f)",
