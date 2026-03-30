@@ -49,6 +49,37 @@ Suggested format:
 - GitHub submission:
   - Pending until the fix is committed and a push attempt is made.
 
+## 2026-03-30 - Direct Nav2 action integration blocked by missing development package
+- Status: open
+- Observed:
+  - Building `robot_agent` with a direct `nav2_msgs/action/NavigateToPose` client failed during CMake configure.
+  - The environment does not provide `nav2_msgsConfig.cmake`, so the package cannot currently compile against Nav2 action headers.
+- Root cause:
+  - The current ROS installation in this workspace does not include the `nav2_msgs` development package needed for direct Nav2 action integration.
+- Fix:
+  - Reworked `robot_agent` to expose an `external_navigation` execution mode that publishes pose goals and consumes navigation result topics without fabricating local task completion.
+  - Kept the direct Nav2 bridge as the next step once the missing Nav2 development dependency is installed.
+- Verified:
+  - `colcon build --packages-select robot_agent fleet_bringup`
+  - Verified that the adjusted `robot_agent` and bringup packages compile without `nav2_msgs`
+- GitHub submission:
+  - Pending until the fix is committed and a push attempt is made.
+
+## 2026-03-30 - Headless Gazebo verification did not reach entity spawn within short timeout
+- Status: open
+- Observed:
+  - `timeout 20s ros2 launch fleet_bringup sim_demo.launch.py gui:=false use_rviz:=false` starts `gzserver`, `fleet_manager`, `path_planner`, `fleet_visualization`, both `robot_agent` nodes, both `robot_state_publisher` nodes, and both `spawn_entity.py` processes.
+  - During that 20-second window, both spawn processes remained waiting for the `/spawn_entity` service and full robot insertion into Gazebo was not observed.
+- Root cause:
+  - Not confirmed yet. This may be a slow Gazebo startup path or an environment/runtime issue rather than a code defect in the launch wiring.
+- Fix:
+  - No code fix yet. The current next step is longer host-side verification and direct inspection of Gazebo service availability outside the short timeout window.
+- Verified:
+  - `timeout 20s ros2 launch fleet_bringup sim_demo.launch.py gui:=false use_rviz:=false`
+  - Verified that the fleet stack starts and that the blocker appears specifically at the Gazebo entity-spawn stage
+- GitHub submission:
+  - Not submitted as a resolved fix because the issue remains under investigation.
+
 
 ## 2026-03-19 - Task assignment stopped at manager bookkeeping
 - Status: resolved

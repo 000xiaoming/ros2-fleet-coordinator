@@ -1,6 +1,6 @@
 # Technical Approach
 
-Date: 2026-03-20
+Date: 2026-03-30
 
 ## Goal
 
@@ -8,11 +8,12 @@ Document the technical approach used in `ros2-fleet-coordinator`, why each major
 
 ## System Approach
 
-The project uses a modular ROS 2 architecture with five packages:
+The project uses a modular ROS 2 architecture with six packages:
 
 - `fleet_msgs`: shared message and service contracts
 - `fleet_manager`: central task intake and dispatch logic
-- `robot_agent`: per-robot execution simulator
+- `robot_agent`: per-robot execution coordination
+- `fleet_runtime`: simulation-side goal execution and visualization support
 - `path_planner`: graph-based route planning service
 - `fleet_bringup`: launch-time composition and configuration entry point
 
@@ -118,6 +119,23 @@ Compared with alternatives:
   - Actions may be appropriate later for richer task lifecycle control, cancellation, and feedback.
   - For the current simulated flow, topic-driven assignment plus state feedback is simpler.
 
+### External navigation bridge before direct Nav2 integration
+
+Chosen because:
+
+- The current environment does not provide the `nav2_msgs` development package, so direct `NavigateToPose` action integration is not buildable yet.
+- The project still needs a clean handoff point between fleet coordination and robot-local execution.
+- Publishing pose goals and consuming navigation result topics keeps `robot_agent` aligned with a future Nav2-backed runtime while still allowing Gazebo-side motion now.
+
+Compared with alternatives:
+
+- Compared with keeping fully fake timer-based execution:
+  - The bridge approach moves the system closer to a real simulated robot stack.
+  - It makes robot motion and task completion depend on an external runtime rather than local task auto-complete.
+- Compared with blocking all simulation work until Nav2 is installed:
+  - The bridge lets Gazebo motion, RViz visibility, and failure plumbing move forward now.
+  - It keeps the eventual Nav2 swap isolated to the robot-local execution side.
+
 ### Graph-based path planning with BFS
 
 Chosen because:
@@ -162,8 +180,8 @@ This project is currently in a V1 simulation phase. The chosen stack favors:
 That is why the project currently uses:
 
 - BFS instead of weighted or heuristic planning
-- simulated robot progress instead of full navigation stack integration
-- simple first-idle assignment instead of optimization-heavy scheduling
+- an external navigation bridge instead of direct Nav2 action integration in this environment
+- distance-ranked assignment instead of optimization-heavy scheduling
 - launch-time parameter configuration for graph topology and waypoint coordinates
 
 ## Current Tradeoffs
@@ -179,18 +197,18 @@ Costs of the adopted approach:
 
 - Demo map data is still simple ROS parameter YAML rather than a richer map format
 - Scheduling is intentionally naive
-- No conflict reservation yet
-- Simulation is not equivalent to physical robot integration
+- Direct Nav2 integration is blocked by missing development packages in the current environment
+- Gazebo simulation still needs longer end-to-end runtime verification
 - Sandbox limitations prevent full ROS 2 CLI runtime verification here
 
 ## Planned Evolution Path
 
 The current approach is intended to evolve in this order:
 
-1. Verify full assignment and completion flow in a normal host shell
-2. Add node/edge conflict reservation
-3. Improve scheduling beyond first-idle assignment
-4. Add visualization and, only after that, consider heavier navigation integration
+1. Verify Gazebo bringup, robot spawning, and task-driven motion in a normal host shell
+2. Replace the temporary goal-following bridge with direct Nav2 integration once Nav2 packages are installed
+3. Add richer failure recovery and retry logic
+4. Improve scheduling with ETA- and priority-aware behavior
 
 ## Documentation Policy
 

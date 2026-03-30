@@ -9,8 +9,13 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>ament_index_python</depend>
+  <depend>fleet_runtime</depend>
+  <depend>gazebo_ros</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>rviz2</depend>
+  <depend>tf2_ros</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

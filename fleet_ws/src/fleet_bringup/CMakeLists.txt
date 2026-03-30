@@ -8,6 +8,9 @@ install(DIRECTORY launch
 )
 
 install(DIRECTORY config
+  rviz
+  urdf
+  worlds
   DESTINATION share/${PROJECT_NAME}
 )
 

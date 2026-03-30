@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<robot name="__ROBOT_NAME__">
+  <link name="__PREFIX__base_link">
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="8.0"/>
+      <inertia ixx="0.2" ixy="0.0" ixz="0.0" iyy="0.2" iyz="0.0" izz="0.25"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.08"/>
+      <geometry>
+        <box size="0.35 0.28 0.12"/>
+      </geometry>
+      <material name="body">
+        <color rgba="0.8 0.25 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.08"/>
+      <geometry>
+        <box size="0.35 0.28 0.12"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="__PREFIX__left_wheel">
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+      <material name="wheel">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="__PREFIX__right_wheel">
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+      <material name="wheel">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="__PREFIX__caster">
+    <inertial>
+      <mass value="0.2"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+      <material name="caster">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="__PREFIX__left_wheel_joint" type="continuous">
+    <parent link="__PREFIX__base_link"/>
+    <child link="__PREFIX__left_wheel"/>
+    <origin xyz="0 0.16 0.05" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="__PREFIX__right_wheel_joint" type="continuous">
+    <parent link="__PREFIX__base_link"/>
+    <child link="__PREFIX__right_wheel"/>
+    <origin xyz="0 -0.16 0.05" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="__PREFIX__caster_joint" type="fixed">
+    <parent link="__PREFIX__base_link"/>
+    <child link="__PREFIX__caster"/>
+    <origin xyz="-0.12 0 0.03" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo reference="__PREFIX__base_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="__ROBOT_NAME___diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <namespace>/__ROBOT_NAME__</namespace>
+      </ros>
+      <update_rate>30</update_rate>
+      <left_joint>__PREFIX__left_wheel_joint</left_joint>
+      <right_joint>__PREFIX__right_wheel_joint</right_joint>
+      <wheel_separation>0.32</wheel_separation>
+      <wheel_diameter>0.10</wheel_diameter>
+      <max_wheel_torque>20</max_wheel_torque>
+      <max_wheel_acceleration>4.0</max_wheel_acceleration>
+      <command_topic>cmd_vel</command_topic>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>true</publish_wheel_tf>
+      <odometry_topic>odom</odometry_topic>
+      <odometry_frame>__ODOM_FRAME__</odometry_frame>
+      <robot_base_frame>__BASE_FRAME__</robot_base_frame>
+    </plugin>
+  </gazebo>
+</robot>

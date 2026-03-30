@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>robot_agent</name>
+  <name>fleet_runtime</name>
   <version>0.1.0</version>
-  <description>Robot-side agent node for the ROS 2 fleet project.</description>
+  <description>Simulation runtime helpers for the ROS 2 fleet coordinator project.</description>
   <maintainer email="bruce@example.com">Bruce</maintainer>
   <license>MIT</license>
 
@@ -10,8 +10,10 @@
 
   <depend>fleet_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

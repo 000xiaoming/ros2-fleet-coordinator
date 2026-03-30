@@ -160,6 +160,17 @@ Suggested format:
 
 ## 2026-03-23
 
+### Multi-candidate scheduling in fleet_manager
+- Changed:
+  - Replaced the single-shot robot pick in `fleet_manager` with a ranked idle-robot candidate list
+  - Added planner retry flow so one task is attempted against alternate idle robots before being postponed or failed
+  - Kept reservation-aware postponement semantics, but now only after every candidate route is blocked
+- Verified:
+  - `source /opt/ros/humble/setup.bash && colcon build --packages-select fleet_manager`
+- Next:
+  - Run a runtime demo that proves alternate robot selection when the best-ranked robot cannot take the task
+  - Continue toward Nav2 goal dispatch, Gazebo motion, RViz runtime visibility, and explicit failure/recovery demos
+
 ### Fleet manager async callback hardening
 - Changed:
   - Updated `fleet_manager` to look up the queued task by `task_id` before queue rotation or erasure in the async planner callback
@@ -172,6 +183,27 @@ Suggested format:
 - Next:
   - Add automated coverage for timeout and async planning interleavings around `fleet_manager`
   - Improve scheduling beyond first-idle dispatch now that the async edge cases are handled
+
+## 2026-03-30
+
+### External navigation execution path in robot_agent
+- Changed:
+  - Added `SIMULATION_PLAN.md` to define the staged Gazebo/Nav2/RViz rollout
+  - Updated `robot_agent` with an `external_navigation` execution mode that publishes waypoint pose goals and waits for external navigation result topics instead of always faking route completion
+  - Updated `fleet_manager` to release task reservations on terminal `failed` robot states as well as `completed`
+  - Added `fleet_runtime` with a simple goal-following controller and an RViz marker publisher
+  - Added Gazebo simulation assets, RViz config, and `sim_demo.launch.py` for two simulated robots
+  - Updated `demo.launch.py` with execution-mode, goal-topic, result-topic, and `use_sim_time` parameters for both robots
+  - Recorded the missing `nav2_msgs` development package as an environmental blocker rather than leaving the direct Nav2 build attempt implicit
+- Verified:
+  - `colcon build --packages-select robot_agent fleet_bringup`
+  - `colcon build --packages-select fleet_manager`
+  - `colcon build --packages-select fleet_runtime fleet_bringup robot_agent fleet_manager`
+  - `ros2 launch fleet_bringup sim_demo.launch.py --show-args`
+  - `timeout 20s ros2 launch fleet_bringup sim_demo.launch.py gui:=false use_rviz:=false`
+- Next:
+  - Verify full robot spawning and task-driven motion in Gazebo outside the current short headless timeout window
+  - Replace the temporary goal follower with a direct Nav2 bridge once the Nav2 development packages are available
 
 ## 2026-03-22
 
